@@ -1,266 +1,477 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart'; // Untuk kIsWeb
-import 'package:intl/intl.dart'; // Untuk format Rupiah
-import '../models/product_model.dart';
-import 'auth_screen.dart';
+import 'package:flutter/foundation.dart';
+import 'home_screen.dart';
+import 'login.dart';
 
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({super.key});
+
   @override
   State<StaffDashboard> createState() => _StaffDashboardState();
 }
 
 class _StaffDashboardState extends State<StaffDashboard> {
+  int _selectedIndex = 0;
   final dio = Dio();
-  List<Product> products = [];
-  List<Product> filteredProducts = [];
-  TextEditingController searchController = TextEditingController();
+  List<dynamic> cartItems = [];
+  List<dynamic> transactionHistory = [];
 
-  // Konfigurasi URL Server & Gambar
-  String get baseUrl => kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
-  String get productUrl => '$baseUrl/api/products';
-  String get transactionUrl => '$baseUrl/api/transactions';
-  String get imageUrl => '$baseUrl/uploads/';
+  String get baseUrl => kIsWeb ? 'http://localhost:3000/api' : 'http://10.0.2.2:3000/api';
 
   @override
   void initState() {
     super.initState();
-    fetch();
+    _fetchTransactionHistory();
   }
 
-  // Ambil Data Produk
-  Future<void> fetch() async {
+  Future<void> _fetchTransactionHistory() async {
     try {
-      final res = await dio.get(productUrl);
-      setState(() {
-        products = (res.data as List).map((e) => Product.fromJson(e)).toList();
-        filteredProducts = products;
-      });
+      final response = await dio.get('$baseUrl/transactions');
+      setState(() => transactionHistory = response.data ?? []);
     } catch (e) {
-      print("Gagal ambil data: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal memuat riwayat')),
+      );
     }
   }
 
-  // Filter Pencarian
-  void _filter(String query) {
+  void _addToCart(dynamic product) {
+    final existingItem = cartItems.firstWhere(
+      (item) => item['_id'] == product['_id'],
+      orElse: () => null,
+    );
+
     setState(() {
-      filteredProducts = products.where((p) => 
-        p.nama.toLowerCase().contains(query.toLowerCase())
-      ).toList();
+      if (existingItem != null) {
+        existingItem['quantity'] = (existingItem['quantity'] ?? 1) + 1;
+      } else {
+        cartItems.add({...product, 'quantity': 1});
+      }
     });
-  }
 
-  // Helper Format Rupiah
-  String formatRupiah(int number) {
-    return NumberFormat.currency(locale: 'id', symbol: 'Rp ', decimalDigits: 0).format(number);
-  }
-
-  // Dialog Transaksi Jual
-  void _showSellDialog(Product product) {
-    final qtyController = TextEditingController(text: "1"); // Default 1 kg
-    
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: Text("Jual ${product.nama}"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Tampilkan Gambar Kecil di Dialog
-          if (product.gambar != null && product.gambar!.isNotEmpty)
-            Container(
-              height: 100, width: 100,
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                image: DecorationImage(
-                  image: NetworkImage('$imageUrl${product.gambar}'),
-                  fit: BoxFit.cover
-                )
-              ),
-            ),
-          Text("Stok Tersedia: ${product.stok} kg", style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: qtyController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: "Jumlah (kg)",
-              border: OutlineInputBorder(),
-              suffixText: "kg"
-            ),
-          ),
-        ],
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${product['nama']} ditambahkan ke keranjang'),
+        duration: const Duration(seconds: 1),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-          onPressed: () async {
-            final jumlah = int.tryParse(qtyController.text) ?? 0;
-            if (jumlah <= 0) return; // Validasi sederhana
-            if (jumlah > product.stok) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Stok tidak cukup!"), backgroundColor: Colors.red)
-              );
-              return;
-            }
-            
-            await _processTransaction(product.id, jumlah);
-            Navigator.pop(ctx);
-          }, 
-          child: const Text("KONFIRMASI JUAL", style: TextStyle(color: Colors.white))
-        )
-      ],
-    ));
+    );
   }
 
-  // Proses Kirim Data ke Backend
-  Future<void> _processTransaction(String id, int jumlah) async {
+  Future<void> _checkout() async {
+    if (cartItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Keranjang kosong!')),
+      );
+      return;
+    }
+
     try {
-      await dio.post(transactionUrl, data: {
-        "productId": id,
-        "jumlah": jumlah
-      });
-      fetch(); // Refresh data stok
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Berhasil menjual $jumlah kg!"), backgroundColor: Colors.green)
-        );
+      // Validate stock untuk semua item di keranjang
+      for (var cartItem in cartItems) {
+        try {
+          // Fetch current product data dari server
+          final productId = cartItem['_id'];
+          final productName = cartItem['nama'];
+          print('🔍 Validasi stok - Product ID: $productId, Nama: $productName');
+          print('📡 API URL: $baseUrl/products/$productId');
+          
+          final response = await dio.get('$baseUrl/products/$productId');
+          final currentProduct = response.data;
+          final availableStock = currentProduct['stok'] ?? 0;
+          final requestedQuantity = cartItem['quantity'] ?? 0;
+
+          print('✅ Stok tersedia: $availableStock kg, diminta: $requestedQuantity kg');
+
+          // Cek apakah stock cukup
+          if (requestedQuantity > availableStock) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '❌ Stok ${cartItem['nama']} tidak cukup!\nStok tersedia: $availableStock kg, diminta: $requestedQuantity kg',
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+            return; // Stop transaksi jika ada item dengan stok kurang
+          }
+        } catch (e) {
+          // Jika error fetching product, skip validation
+          print('❌ ERROR validasi stok untuk ${cartItem['nama']}: $e');
+          print('📋 CartItem data: $cartItem');
+        }
       }
+
+      // Jika semua validasi lolos, lakukan transaksi dan kurangi stok
+      for (var item in cartItems) {
+        // 1. Buat transaksi
+        await dio.post('$baseUrl/transactions', data: {
+          'namaBuah': item['nama'],
+          'jumlah': item['quantity'],
+          'totalHarga': (item['harga'] ?? 0) * item['quantity'],
+        });
+
+        // 2. Kurangi stok produk di database menggunakan dedicated endpoint
+        try {
+          final stockResponse = await dio.post(
+            '$baseUrl/products/${item['_id']}/reduce-stock',
+            data: {'quantity': item['quantity'] ?? 1},
+          );
+          print('✅ Stok ${item['nama']} dikurangi berhasil');
+        } catch (e) {
+          print('⚠️ Warning: Tidak bisa kurangi stok untuk ${item['nama']}: $e');
+          // Transaksi tetap berhasil meski gagal update stok
+        }
+      }
+
+      setState(() => cartItems.clear());
+      _fetchTransactionHistory();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Transaksi berhasil! Stok telah diperbarui.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Gagal transaksi!"), backgroundColor: Colors.red)
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
+
+  void _removeFromCart(int index) {
+    setState(() => cartItems.removeAt(index));
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Staff - Kasir", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.blueAccent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () => Navigator.pushAndRemoveUntil(
-              context, 
-              MaterialPageRoute(builder: (_) => const AuthScreen()), 
-              (r) => false
-            )
-          )
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: Text(
+          'Staff Dashboard',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.logout, color: Colors.red),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          },
+        ),
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          // Home/Penjualan Tab
+          _buildPenjualanTab(),
+          // Riwayat Tab
+          _buildRiwayatTab(),
         ],
       ),
-      body: Column(
-        children: [
-          // Search Bar
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: "Cari nama buah...",
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                filled: true,
-                fillColor: Colors.grey[100]
-              ),
-              onChanged: _filter,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
             ),
-          ),
-          
-          // List Produk
-          Expanded(
-            child: filteredProducts.isEmpty 
-              ? const Center(child: Text("Produk tidak ditemukan"))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  itemCount: filteredProducts.length,
-                  itemBuilder: (ctx, i) {
-                    final p = filteredProducts[i];
-                    final bool isLowStock = p.stok < 5; // Cek stok menipis
-
-                    return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Row(
-                          children: [
-                            // 1. Gambar Produk
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                width: 70, height: 70,
-                                color: Colors.grey[200],
-                                child: (p.gambar != null && p.gambar!.isNotEmpty)
-                                  ? Image.network(
-                                      '$imageUrl${p.gambar}', 
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (c,o,s) => const Icon(Icons.broken_image, color: Colors.grey),
-                                    )
-                                  : const Icon(Icons.storefront, size: 30, color: Colors.blueGrey),
-                              ),
-                            ),
-                            
-                            const SizedBox(width: 15),
-
-                            // 2. Detail Info
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    p.nama, 
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    formatRupiah(p.harga),
-                                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  // Indikator Stok
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isLowStock ? Colors.red.shade100 : Colors.blue.shade50,
-                                      borderRadius: BorderRadius.circular(4)
-                                    ),
-                                    child: Text(
-                                      "Sisa Stok: ${p.stok} kg",
-                                      style: TextStyle(
-                                        color: isLowStock ? Colors.red : Colors.blue,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold
-                                      ),
-                                    ),
-                                  )
-                                ],
-                              ),
-                            ),
-
-                            // 3. Tombol Jual
-                            ElevatedButton(
-                              onPressed: p.stok > 0 ? () => _showSellDialog(p) : null, // Disable jika stok 0
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: p.stok > 0 ? Colors.blue : Colors.grey,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-                              ),
-                              child: const Text("JUAL", style: TextStyle(color: Colors.white)),
-                            )
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-          ),
-        ],
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (index) => setState(() => _selectedIndex = index),
+          backgroundColor: Colors.white,
+          selectedItemColor: const Color(0xFF00BCD4),
+          unselectedItemColor: Colors.grey[400],
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.shopping_cart),
+              label: 'Penjualan',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.history),
+              label: 'Riwayat',
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildPenjualanTab() {
+    return Row(
+      children: [
+        // Left: Product List
+        Expanded(
+          flex: 2,
+          child: HomeScreen(role: 'staff', onAddToCart: _addToCart),
+        ),
+        // Right: Cart
+        Expanded(
+          flex: 1,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: Colors.grey[200]!)),
+            ),
+            child: Column(
+              children: [
+                // Cart Header
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF00BCD4), Color(0xFFE91E63)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                  ),
+                  child: Text(
+                    'Keranjang (${cartItems.length})',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                // Cart Items
+                Expanded(
+                  child: cartItems.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.shopping_cart_outlined,
+                                size: 48,
+                                color: Colors.grey[300],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Keranjang kosong',
+                                style: TextStyle(color: Colors.grey[500]),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: cartItems.length,
+                          itemBuilder: (context, index) {
+                            final item = cartItems[index];
+                            final subtotal = (item['harga'] ?? 0) * (item['quantity'] ?? 1);
+                            return Card(
+                              elevation: 0,
+                              color: Colors.grey[50],
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['nama'] ?? 'Produk',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Rp ${item['harga']}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF00BCD4).withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'x${item['quantity']}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF00BCD4),
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                                          onPressed: () => _removeFromCart(index),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        'Sub: Rp $subtotal',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFFE91E63),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                // Total & Checkout
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total:',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Text(
+                            'Rp ${cartItems.fold<int>(0, (sum, item) => sum + (((item['harga'] ?? 0) as int) * ((item['quantity'] ?? 1) as int)))}',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFFE91E63),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: cartItems.isEmpty ? null : _checkout,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00BCD4),
+                            disabledBackgroundColor: Colors.grey[300],
+                          ),
+                          child: const Text(
+                            'BAYAR',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRiwayatTab() {
+    return transactionHistory.isEmpty
+        ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.receipt_long,
+                  size: 80,
+                  color: Colors.grey[300],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Belum ada transaksi',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: transactionHistory.length,
+            itemBuilder: (context, index) {
+              final transaction = transactionHistory[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                elevation: 1,
+                child: ListTile(
+                  leading: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF00BCD4), Color(0xFFE91E63)],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.receipt,
+                      color: Colors.white,
+                    ),
+                  ),
+                  title: Text(
+                    transaction['namaBuah'] ?? 'Transaksi',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    transaction['tanggal']?.toString().substring(0, 10) ?? '',
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Rp ${transaction['totalHarga']}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFE91E63),
+                        ),
+                      ),
+                      Text(
+                        'x${transaction['jumlah']}',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
   }
 }

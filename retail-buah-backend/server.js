@@ -69,25 +69,40 @@ const JWT_SECRET = 'rahasia_toko_buah_super_aman';
 // --- AUTH ---
 app.post('/api/auth/register', async (req, res) => {
   try {
+    console.log('📝 Register attempt:', req.body.username);
     const { username, password, role } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ username, password: hashedPassword, role });
     await user.save();
+    console.log('✅ User registered:', username, 'as', role);
     res.status(201).json({ message: "User berhasil dibuat" });
   } catch (err) {
+    console.log('❌ Register error:', err.message);
     res.status(400).json({ message: "Username sudah ada" });
   }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
+    console.log('🔐 Login attempt:', req.body.username);
     const user = await User.findOne({ username: req.body.username });
-    if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
+    
+    if (!user) {
+      console.log('❌ User not found:', req.body.username);
       return res.status(401).json({ message: "Username/Password Salah" });
     }
+    
+    const passwordMatch = await bcrypt.compare(req.body.password, user.password);
+    if (!passwordMatch) {
+      console.log('❌ Password incorrect for:', req.body.username);
+      return res.status(401).json({ message: "Username/Password Salah" });
+    }
+    
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET);
+    console.log('✅ Login success:', req.body.username, 'as', user.role);
     res.json({ token, role: user.role, username: user.username });
   } catch (err) {
+    console.log('🔥 Login error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
@@ -98,6 +113,19 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   const products = await Product.find().sort({ createdAt: -1 });
   res.json(products);
+});
+
+// GET: Ambil produk by ID
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Produk tidak ditemukan" });
+    }
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // POST: Tambah Produk (Support Upload Gambar)
@@ -147,25 +175,21 @@ app.delete('/api/products/:id', async (req, res) => {
 // --- TRANSAKSI (PENJUALAN) ---
 app.post('/api/transactions', async (req, res) => {
   try {
-    const { productId, jumlah } = req.body;
-    const product = await Product.findById(productId);
+    const { namaBuah, jumlah, totalHarga } = req.body;
 
-    if (!product) return res.status(404).json({ message: "Produk tidak ditemukan" });
-    if (product.stok < jumlah) return res.status(400).json({ message: "Stok tidak cukup" });
+    if (!namaBuah || !jumlah || !totalHarga) {
+      return res.status(400).json({ message: "Semua field harus diisi" });
+    }
 
-    // 1. Kurangi Stok
-    product.stok -= jumlah;
-    await product.save();
-
-    // 2. Simpan Transaksi
     const trx = new Transaction({
-      productId,
-      namaBuah: product.nama,
+      namaBuah,
       jumlah,
-      totalHarga: product.harga * jumlah
+      totalHarga,
+      tanggal: new Date()
     });
     await trx.save();
 
+    console.log(`✅ Transaksi dibuat: ${namaBuah} x${jumlah} = Rp${totalHarga}`);
     res.status(201).json(trx);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -173,8 +197,124 @@ app.post('/api/transactions', async (req, res) => {
 });
 
 app.get('/api/transactions', async (req, res) => {
-  const trxs = await Transaction.find().sort({ tanggal: -1 });
-  res.json(trxs);
+  try {
+    const trxs = await Transaction.find().sort({ tanggal: -1 });
+    res.json(trxs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST: Reduce Product Stock (untuk transaksi)
+app.post('/api/products/:id/reduce-stock', async (req, res) => {
+  try {
+    const { quantity } = req.body;
+
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({ message: "Jumlah harus lebih dari 0" });
+    }
+
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ message: "Produk tidak ditemukan" });
+    }
+
+    if (product.stok < quantity) {
+      return res.status(400).json({ 
+        message: "Stok tidak cukup",
+        available: product.stok,
+        requested: quantity
+      });
+    }
+
+    // Kurangi stok
+    const newStock = product.stok - quantity;
+    const updated = await Product.findByIdAndUpdate(
+      req.params.id,
+      { stok: newStock },
+      { new: true }
+    );
+
+    console.log(`📉 Stok ${product.nama} dikurangi: ${product.stok} → ${newStock}`);
+    res.json({
+      message: "Stok berhasil dikurangi",
+      product: updated
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- USER MANAGEMENT (UNTUK ADMIN) ---
+// GET: Ambil semua users (dengan optional filter role)
+app.get('/api/users', async (req, res) => {
+  try {
+    const { role } = req.query;
+    let query = {};
+    
+    // Filter berdasarkan role jika parameter diberikan
+    if (role) {
+      query.role = role;
+    }
+    
+    const users = await User.find(query)
+      .select('_id username role createdAt')
+      .sort({ createdAt: -1 });
+    
+    console.log(`📋 Fetched ${users.length} users${role ? ` with role: ${role}` : ''}`);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Ambil user by ID
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT: Update user (username, password, role)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    const updateData = { username, role };
+    
+    // Hanya hash password jika ada perubahan password
+    if (password && password.length > 0) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    ).select('-password');
+    
+    if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+    console.log('✏️ User updated:', user.username);
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// DELETE: Hapus user
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+    console.log('🗑️ User deleted:', user.username);
+    res.json({ message: "User berhasil dihapus" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // 6. JALANKAN SERVER
