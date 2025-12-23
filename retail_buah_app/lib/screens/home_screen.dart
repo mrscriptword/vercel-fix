@@ -17,9 +17,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> products = [];
   bool _isLoading = true;
 
+  // Sesuaikan URL agar konsisten dengan file lain
   String get baseUrl => kIsWeb
       ? 'http://localhost:3000/api/products'
       : 'http://10.0.2.2:3000/api/products';
+  
+  String get storageUrl => kIsWeb 
+      ? 'http://localhost:3000/uploads' 
+      : 'http://10.0.2.2:3000/uploads';
 
   @override
   void initState() {
@@ -35,8 +40,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      _showSnackBar('Gagal memuat produk');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnackBar('Gagal memuat produk');
+      }
     }
   }
 
@@ -47,39 +54,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _generateQRCode(String productId, String productName) {
-    // Generate QR code data dari product ID dan nama
-    // Format: PROD_[productId]_[productName]
     return 'PROD_${productId}_$productName';
   }
 
   Widget _buildQRCodeWidget(String qrData) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[400]!),
+        border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(4),
-        color: Colors.white,
+        // QR Code sebaiknya tetap di background putih agar mudah discan
+        color: Colors.white, 
       ),
       child: QrImageView(
         data: qrData,
         version: QrVersions.auto,
         size: 70,
         gapless: false,
+        // Pastikan warna QR Code kontras (hitam) karena background putih
+        eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+        dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
         errorStateBuilder: (ctx, err) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Text(
-              qrData.substring(0, 8),
-              style: const TextStyle(
-                fontFamily: 'Courier',
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
+          return const Icon(Icons.error, size: 20, color: Colors.red);
         },
       ),
     );
@@ -87,22 +84,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      // Mengikuti tema latar belakang scaffold
+      backgroundColor: theme.scaffoldBackgroundColor, 
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         centerTitle: true,
         title: Text(
           'Retail Buah',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: isDark ? Colors.white : Colors.black87,
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.black87),
+            icon: Icon(Icons.refresh, color: isDark ? Colors.white : Colors.black87),
             onPressed: () {
               setState(() => _isLoading = true);
               _fetchProducts();
@@ -124,13 +125,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       Icon(
                         Icons.shopping_cart_outlined,
                         size: 80,
-                        color: Colors.grey[300],
+                        color: isDark ? Colors.grey[700] : Colors.grey[300],
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Tidak ada produk',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.grey[600],
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
                         ),
                       ),
                     ],
@@ -148,73 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                           child: Row(
                             children: [
-                              SizedBox(
-                                width: 40,
-                                child: Text(
-                                  'No',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 70,
-                                child: Text(
-                                  'Gambar',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  'Nama Produk',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.left,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 70,
-                                child: Text(
-                                  'Stok (kg)',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 80,
-                                child: Text(
-                                  'QR Code',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              if (widget.role == 'staff')
-                                SizedBox(
-                                  width: 70,
-                                  child: Text(
-                                    'Aksi',
-                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
+                              _buildHeaderText('No', width: 40),
+                              _buildHeaderText('Gambar', width: 70),
+                              Expanded(child: _buildHeaderText('Nama Produk', textAlign: TextAlign.left)),
+                              _buildHeaderText('Stok (kg)', width: 70),
+                              _buildHeaderText('QR Code', width: 80),
+                              if (widget.role == 'staff') _buildHeaderText('Aksi', width: 70),
                             ],
                           ),
                         ),
@@ -225,129 +165,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemCount: products.length,
                           itemBuilder: (context, index) {
                             final product = products[index];
-                            final isEven = index % 2 == 0;
-                            final qrData = _generateQRCode(
-                              product['_id'] ?? '',
-                              product['nama'] ?? 'Produk',
-                            );
+                            // Row color adaptif
+                            final rowColor = index % 2 == 0 
+                                ? (isDark ? Colors.grey[900] : Colors.grey[50])
+                                : (isDark ? theme.scaffoldBackgroundColor : Colors.white);
 
                             return Container(
-                              color: isEven ? Colors.grey[50] : Colors.white,
+                              color: rowColor,
                               child: Column(
                                 children: [
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                                     child: Row(
                                       children: [
-                                        // No
-                                        SizedBox(
-                                          width: 40,
-                                          child: Text(
-                                            '${index + 1}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                        // Gambar
-                                        SizedBox(
-                                          width: 70,
-                                          child: Container(
-                                            width: 60,
-                                            height: 60,
-                                            decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(6),
-                                              gradient: const LinearGradient(
-                                                colors: [Color(0xFF00BCD4), Color(0xFFE91E63)],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              ),
-                                            ),
-                                            child: product['gambar'] != null && product['gambar'] != ''
-                                                ? ClipRRect(
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    child: Image.network(
-                                                      'http://${kIsWeb ? 'localhost' : '10.0.2.2'}:3000/uploads/${product['gambar']}',
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (context, error, stackTrace) {
-                                                        return const Icon(Icons.shopping_bag, color: Colors.white, size: 24);
-                                                      },
-                                                    ),
-                                                  )
-                                                : const Icon(Icons.shopping_bag, color: Colors.white, size: 24),
-                                          ),
-                                        ),
-                                        // Nama Produk
-                                        Expanded(
-                                          flex: 2,
-                                          child: Text(
-                                            product['nama'] ?? '-',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        // Stok
-                                        SizedBox(
-                                          width: 70,
-                                          child: Text(
-                                            '${product['stok'] ?? 0}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
-                                              color: Color(0xFF00BCD4),
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                        // QR Code
-                                        SizedBox(
-                                          width: 80,
-                                          child: Tooltip(
-                                            message: qrData,
-                                            child: _buildQRCodeWidget(qrData),
-                                          ),
-                                        ),
-                                        // Aksi (untuk staff)
-                                        if (widget.role == 'staff')
-                                          SizedBox(
-                                            width: 70,
-                                            child: Center(
-                                              child: ElevatedButton(
-                                                onPressed: () {
-                                                  if (widget.onAddToCart != null) {
-                                                    widget.onAddToCart!(product);
-                                                  }
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF00BCD4),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                                ),
-                                                child: const Text(
-                                                  'Beli',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                        _buildCellText('${index + 1}', width: 40),
+                                        _buildImageCell(product['gambar']),
+                                        Expanded(child: _buildCellText(product['nama'] ?? '-', textAlign: TextAlign.left, isBold: true)),
+                                        _buildCellText('${product['stok'] ?? 0}', width: 70, color: const Color(0xFF00BCD4)),
+                                        _buildQRCell(product),
+                                        if (widget.role == 'staff') _buildActionCell(product),
                                       ],
                                     ),
                                   ),
-                                  if (index < products.length - 1)
-                                    Divider(
-                                      height: 1,
-                                      color: Colors.grey[300],
-                                      indent: 8,
-                                      endIndent: 8,
-                                    ),
+                                  Divider(height: 1, color: theme.dividerColor, indent: 8, endIndent: 8),
                                 ],
                               ),
                             );
@@ -357,6 +197,91 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+    );
+  }
+
+  // --- Helper Widgets agar kode lebih bersih ---
+
+  Widget _buildHeaderText(String text, {double? width, TextAlign textAlign = TextAlign.center}) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+        textAlign: textAlign,
+      ),
+    );
+  }
+
+  Widget _buildCellText(String text, {double? width, TextAlign textAlign = TextAlign.center, Color? color, bool isBold = false}) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+          fontSize: 13,
+          color: color ?? (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+        ),
+        textAlign: textAlign,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _buildImageCell(String? imageName) {
+    return SizedBox(
+      width: 70,
+      child: Center(
+        child: Container(
+          width: 55, height: 55,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            color: Colors.grey[300],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: imageName != null && imageName.isNotEmpty
+                ? Image.network(
+                    '$storageUrl/$imageName',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported),
+                  )
+                : const Icon(Icons.shopping_bag, color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQRCell(dynamic product) {
+    final qrData = _generateQRCode(product['_id'] ?? '', product['nama'] ?? 'Produk');
+    return SizedBox(
+      width: 80,
+      child: Tooltip(
+        message: qrData,
+        child: _buildQRCodeWidget(qrData),
+      ),
+    );
+  }
+
+  Widget _buildActionCell(dynamic product) {
+    return SizedBox(
+      width: 70,
+      child: Center(
+        child: ElevatedButton(
+          onPressed: () => widget.onAddToCart?.call(product),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00BCD4),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('Beli', style: TextStyle(fontSize: 11)),
+        ),
+      ),
     );
   }
 }
