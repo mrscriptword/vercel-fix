@@ -165,39 +165,56 @@ app.get('/api/transactions', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select('id, product_id, product_name, quantity, price, total_price, tanggal, image_url')
       .order('tanggal', { ascending: false });
     
     if (error) throw error;
     console.log('💳 Transactions fetched:', data.length);
     res.json(data);
   } catch (err) {
+    console.error('❌ Error fetching transactions:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
 app.post('/api/transactions', async (req, res) => {
   try {
-    const { product_id, product_name, quantity, price, total_price } = req.body;
+    const { product_id, product_name, quantity, price, total_price, image_url } = req.body;
+    
+    console.log('📝 Transaction request:', { product_id, product_name, quantity, price, total_price });
+    
+    // Insert dengan field yang PASTI ada di database (sesuai schema Supabase)
+    const insertData = { 
+      product_id,
+      product_name,
+      quantity,
+      price: price || 0,
+      total_price,
+      tanggal: new Date().toISOString(),
+      image_url: image_url || null
+    };
+    
+    console.log('Inserting:', insertData);
     
     const { data, error } = await supabase
       .from('transactions')
-      .insert([{ 
-        product_id, 
-        product_name, 
-        quantity, 
-        price,
-        total_price,
-        tanggal: new Date().toISOString()
-      }])
+      .insert([insertData])
       .select();
     
-    if (error) throw error;
-    console.log('✅ Transaction added:', product_name);
+    if (error) {
+      console.error('❌ Supabase insert error:', error.message);
+      console.error('Error code:', error.code);
+      throw error;
+    }
+    
+    console.log('✅ Transaction added successfully:', product_name);
     res.status(201).json(data[0]);
   } catch (err) {
-    console.log('❌ Error adding transaction:', err.message);
-    res.status(500).json({ message: err.message });
+    console.error('❌ Full error:', err);
+    res.status(500).json({ 
+      message: err.message,
+      code: err.code
+    });
   }
 });
 
