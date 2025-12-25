@@ -18,7 +18,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  String get baseUrl => 'http://localhost:3000/api';
+  // Gunakan localhost jika di Web/Simulator, gunakan 10.0.2.2 jika di Emulator Android
+  String get baseUrl => 'http://localhost:3000/api'; 
+
   Future<void> _handleLogin() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
       _showSnackBar('Username dan password tidak boleh kosong!');
@@ -33,17 +35,27 @@ class _LoginScreenState extends State<LoginScreen> {
         receiveTimeout: const Duration(seconds: 10),
       ));
       
+      // Menggunakan rute /api/login sesuai server.js terbaru Anda
       final response = await dio.post(
-        '$baseUrl/login',
+        '$baseUrl/login', 
         data: {
-          "username": _usernameController.text,
+          "username": _usernameController.text.trim(),
           "password": _passwordController.text,
         },
       );
 
-      final role = response.data['role'] ?? 'staff';
+      // Pastikan data role diambil sebagai String
+      final String role = response.data['role']?.toString() ?? 'staff';
+      final String username = response.data['username']?.toString() ?? _usernameController.text;
       
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Selamat datang, $username!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -54,11 +66,24 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) {
-        _showSnackBar('❌ Username atau password salah!');
+      String errorMessage = 'Gagal login';
+      
+      if (e.response != null && e.response?.data != null) {
+        // PERBAIKAN: Paksa menjadi String menggunakan .toString() 
+        // untuk menghindari error "String is not subtype of int"
+        final data = e.response?.data;
+        if (data is Map) {
+          errorMessage = data['message']?.toString() ?? 'Username atau password salah';
+        } else {
+          errorMessage = data.toString();
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        errorMessage = 'Koneksi ke server waktu habis';
       } else {
-        _showSnackBar('❌ Gagal login: ${e.message}');
+        errorMessage = 'Tidak dapat terhubung ke server';
       }
+      
+      _showSnackBar('❌ $errorMessage');
     } catch (e) {
       _showSnackBar('❌ Error: ${e.toString()}');
     } finally {
@@ -85,12 +110,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      // backgroundColor otomatis mengikuti tema (scaffoldBackgroundColor)
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          // TOMBOL SWITCH TEMA DI LOGIN
           IconButton(
             icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, 
                 color: isDark ? Colors.white : Colors.black87),
@@ -109,7 +132,6 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 20),
-                // Header Title - Mengikuti tema teks
                 Text(
                   'Fruit Store Management',
                   textAlign: TextAlign.center,
@@ -121,26 +143,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 40),
                 
-                // Username Field
                 TextField(
                   controller: _usernameController,
                   style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                   decoration: InputDecoration(
                     labelText: 'Username',
                     prefixIcon: const Icon(Icons.person_outline),
-                    labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700]),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    // Border warna adaptif
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
-                    ),
                   ),
                   enabled: !_isLoading,
                 ),
                 const SizedBox(height: 20),
 
-                // Password Field
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -148,7 +162,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline),
-                    labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700]),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
@@ -158,17 +171,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
-                    ),
                   ),
                   enabled: !_isLoading,
                 ),
                 
                 const SizedBox(height: 40),
 
-                // Login Button dengan Gradient
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -202,7 +210,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 
-                // Sign Up Button - Outline adaptif
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
@@ -211,7 +218,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Text(

@@ -28,9 +28,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ),
   );
 
-String get baseUrl => 'https://retail-buah-v2-7mu3ahd3h-anantapramudyaalfarits-projects.vercel.app/api';
-String get storageUrl => 'https://vercel-deploy-app-retail.vercel.app/uploads';
-
+String get baseUrl => 'https://vercel-fix-self.vercel.app/api';
+String get storageUrl => 'https://vercel-fix-self.vercel.app/uploads';
   Future<void> _handleRegister() async {
     if (_usernameController.text.isEmpty ||
         _passwordController.text.isEmpty ||

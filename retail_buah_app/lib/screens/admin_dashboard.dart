@@ -19,8 +19,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
   final dio = Dio();
 
-String get baseUrl => 'https://retail-buah-v2-7mu3ahd3h-anantapramudyaalfarits-projects.vercel.app/api';
-  String get storageUrl => 'https://retail-buah-v2-7mu3ahd3h-anantapramudyaalfarits-projects.vercel.app/uploads';
+String get baseUrl => 'https://vercel-fix-self.vercel.app/api';
+String get storageUrl => 'https://vercel-fix-self.vercel.app/uploads';
 
   @override
   Widget build(BuildContext context) {

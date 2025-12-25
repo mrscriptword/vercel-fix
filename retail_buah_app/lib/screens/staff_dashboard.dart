@@ -19,7 +19,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
   String searchQuery = '';
 
   // Tetap menggunakan URL Vercel sesuai permintaan Anda
-  String get baseUrl => 'http://localhost:3000/api';
+  String get baseUrl => 'https://vercel-fix-self.vercel.app/api';
+String get storageUrl => 'https://vercel-fix-self.vercel.app/uploads';
   @override
   void initState() {
     super.initState();

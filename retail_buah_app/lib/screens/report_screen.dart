@@ -12,8 +12,8 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   final dio = Dio();
   List logs = [];
-  String get url => kIsWeb ? 'http://localhost:3000/api/transactions' : 'http://10.0.2.2:3000/api/transactions';
-
+  String get url => kIsWeb ? 'https://vercel-fix-self.vercel.app/api/transactions';
+  String get storageUrl => 'https://vercel-fix-self.vercel.app/uploads';
   @override
   void initState() { super.initState(); fetch(); }
 
