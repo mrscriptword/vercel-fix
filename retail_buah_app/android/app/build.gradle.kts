@@ -1,14 +1,16 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // Flutter Gradle Plugin
+    // Flutter Gradle Plugin (WAJIB terakhir)
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.retail_buah_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+
+    // ✅ FIX NDK (WAJIB)
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -24,7 +26,7 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
 
-        // ✅ FIX PALING PENTING
+        // ✅ FIX KOTLIN DSL FLUTTER
         versionCode = flutter.versionCode()
         versionName = flutter.versionName()
     }
@@ -33,6 +35,8 @@ android {
         release {
             // sementara pakai debug signing (AMAN UNTUK BUILD)
             signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
